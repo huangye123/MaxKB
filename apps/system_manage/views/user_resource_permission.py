@@ -14,9 +14,10 @@ from rest_framework.views import APIView
 
 from common import result
 from common.auth import TokenAuth
-from common.auth.authentication import has_permissions
+from common.auth.authentication import get_is_permissions, has_permissions
 from common.constants.permission_constants import RoleConstants, Permission, Group, Operate, ViewPermission, \
     CompareConstants
+from common.exception.app_exception import AppUnauthorizedFailed
 from common.log.log import log
 from system_manage.api.user_resource_permission import UserResourcePermissionAPI, EditUserResourcePermissionAPI, \
     ResourceUserPermissionAPI, ResourceUserPermissionPageAPI, ResourceUserPermissionEditAPI, \
@@ -24,6 +25,7 @@ from system_manage.api.user_resource_permission import UserResourcePermissionAPI
 from system_manage.serializers.user_resource_permission import UserResourcePermissionSerializer, \
     ResourceUserPermissionSerializer
 from users.models import User
+from users.views.user import resolve_current_user_auth_for_debug
 
 
 def get_user_operation_object(user_id):
@@ -36,8 +38,6 @@ def get_user_operation_object(user_id):
 
 
 class WorkSpaceUserResourcePermissionView(APIView):
-    authentication_classes = [TokenAuth]
-
     @extend_schema(
         methods=['GET'],
         description=_('Obtain resource authorization list'),
@@ -46,11 +46,14 @@ class WorkSpaceUserResourcePermissionView(APIView):
         responses=UserResourcePermissionAPI.get_response(),
         tags=[_('Resources authorization')]  # type: ignore
     )
-    @has_permissions(
-        lambda r, kwargs: Permission(group=Group(kwargs.get('resource') + '_WORKSPACE_USER_RESOURCE_PERMISSION'),
-                                     operate=Operate.READ),
-        RoleConstants.ADMIN, RoleConstants.WORKSPACE_MANAGE.get_workspace_role())
     def get(self, request: Request, workspace_id: str, user_id: str, resource: str):
+        request.user, request.auth = resolve_current_user_auth_for_debug(request)
+        has_permission = get_is_permissions(request, workspace_id=workspace_id, user_id=user_id, resource=resource)
+        if not has_permission(
+                Permission(group=Group(resource + '_WORKSPACE_USER_RESOURCE_PERMISSION'), operate=Operate.READ),
+                RoleConstants.ADMIN,
+                RoleConstants.WORKSPACE_MANAGE.get_workspace_role()):
+            raise AppUnauthorizedFailed(403, _('No permission to access'))
         return result.success(UserResourcePermissionSerializer(
             data={'workspace_id': workspace_id, 'user_id': user_id, 'auth_target_type': resource}
         ).list({'name': request.query_params.get('name'),

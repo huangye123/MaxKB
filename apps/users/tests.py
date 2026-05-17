@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 from unittest.mock import Mock, patch
 import json
 
@@ -9,7 +10,7 @@ from rest_framework.request import Request
 
 from common.exception.app_exception import AppAuthenticationFailed
 from common.constants.permission_constants import Auth, RoleConstants
-from users.serializers.user import UserManageSerializer, build_current_user_role_list
+from users.serializers.user import UserManageSerializer, UserProfileSerializer, build_current_user_role_list
 from users.serializers.login import LoginSerializer
 from users.views.user import resolve_current_user_for_role_list, resolve_current_user_auth_for_debug
 from system_manage.serializers.role import build_system_role_list, get_role_permission_tree, get_system_role_list
@@ -299,6 +300,49 @@ class LoginEncryptedDataTest(SimpleTestCase):
 
         self.assertIn("token", result)
         verify_mock.assert_called_once_with("MaxKB@123..", "stored-password")
+
+
+class UserProfileMigrationTest(SimpleTestCase):
+    def test_serializer_uses_real_auth_roles_and_permissions(self):
+        user = SimpleNamespace(
+            id="user-id",
+            username="admin",
+            nick_name="\u7cfb\u7edf\u7ba1\u7406\u5458",
+            email="",
+            source="LOCAL",
+            role="ADMIN",
+            password="encoded-password",
+            language=None,
+        )
+        auth = Auth(
+            ["ADMIN", "WORKSPACE_MANAGE:/WORKSPACE/default"],
+            [
+                "USER_MANAGEMENT:READ",
+                "APPLICATION:READ:/WORKSPACE/default/APPLICATION/default",
+            ],
+        )
+
+        with patch("users.serializers.user.get_workspace_list_by_user", return_value=[{"id": "default", "name": "default"}]):
+            with patch("users.serializers.user.DatabaseModelManage.get_model", return_value=None):
+                with patch("users.serializers.user.password_verify", return_value=False):
+                    profile = UserProfileSerializer.profile(user, auth)
+
+        self.assertEqual(profile["role"], auth.role_list)
+        self.assertEqual(profile["permissions"], auth.permission_list)
+        self.assertEqual(profile["workspace_list"], [{"id": "default", "name": "default"}])
+
+    def test_vite_no_longer_mocks_user_profile(self):
+        vite_config = (Path(__file__).resolve().parents[2] / "ui" / "vite.config.ts").read_text(encoding="utf-8")
+
+        self.assertNotIn("/admin/api/user/profile", vite_config)
+
+    def test_vite_no_longer_overlays_system_profile_license(self):
+        vite_config = (Path(__file__).resolve().parents[2] / "ui" / "vite.config.ts").read_text(encoding="utf-8")
+
+        self.assertNotIn("devProfileLicenseOverlayPlugin", vite_config)
+        self.assertNotIn("/admin/api/profile", vite_config)
+        self.assertNotIn("edition: 'PE'", vite_config)
+        self.assertNotIn("license_is_valid: true", vite_config)
 
     def test_login_treats_non_json_encrypted_payload_as_password(self):
         user = SimpleNamespace(

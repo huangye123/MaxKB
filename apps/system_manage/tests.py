@@ -3,7 +3,56 @@ import json
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory
 
-from system_manage.views import SystemChatUser, SystemGroup
+from system_manage.views import DisplayInfo, SystemChatUser, SystemGroup, WorkspaceApplicationPage
+
+
+class DisplayInfoApiTest(SimpleTestCase):
+    def test_display_info_returns_default_ui_config(self):
+        request = APIRequestFactory().get("/admin/api/display/info")
+        response = DisplayInfo.as_view()(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["message"], "Success")
+        self.assertEqual(payload["data"]["title"], "MaxKB")
+        self.assertEqual(payload["data"]["theme"], "#3370FF")
+
+    def test_display_info_ignores_expired_authorization_header(self):
+        request = APIRequestFactory().get(
+            "/admin/api/display/info",
+            HTTP_AUTHORIZATION="Bearer expired-token",
+        )
+        response = DisplayInfo.as_view()(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["data"]["showUserManual"], True)
+
+
+class WorkspaceApplicationPageApiTest(SimpleTestCase):
+    def test_application_page_returns_empty_records(self):
+        request = APIRequestFactory().get("/admin/api/workspace/default/application/1/30")
+        response = WorkspaceApplicationPage.as_view()(request, workspace_id="default", current_page=1, page_size=30)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["message"], "Success")
+        self.assertEqual(payload["data"], {"total": 0, "records": []})
+
+    def test_application_page_ignores_expired_authorization_header(self):
+        request = APIRequestFactory().get(
+            "/admin/api/workspace/default/application/1/30",
+            HTTP_AUTHORIZATION="Bearer expired-token",
+        )
+        response = WorkspaceApplicationPage.as_view()(request, workspace_id="default", current_page=1, page_size=30)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["code"], 200)
+        self.assertEqual(payload["data"]["records"], [])
 
 
 class SystemGroupApiTest(SimpleTestCase):

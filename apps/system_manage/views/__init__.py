@@ -14,3 +14,5 @@ from .resource_mapping import *
 from .role import *
 from .system_chat_user import *
 from .system_group import *
+from .display_info import *
+from .workspace_compat import *
