@@ -11,3 +11,6 @@ from .email_setting import *
 from .system_profile import *
 from .valid import *
 from .resource_mapping import *
+from .role import *
+from .system_chat_user import *
+from .system_group import *

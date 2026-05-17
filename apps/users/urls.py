@@ -7,7 +7,9 @@ app_name = "user"
 # fmt: off
 urlpatterns = [
     path('user/login', views.LoginView.as_view(), name='login'),
+    path('login/auth/setting', views.LoginAuthSetting.as_view(), name='login_auth_setting'),
     path('user/profile', views.UserProfileView.as_view(), name="user_profile"),
+    path('role_list/current_user', views.CurrentUserRoleListView.as_view(), name="current_user_role_list"),
     path('user/captcha', views.CaptchaView.as_view(), name='captcha'),
     path('user/test', views.TestPermissionsUserView.as_view(), name="test"),
     path('user/logout', views.Logout.as_view(), name='logout'),

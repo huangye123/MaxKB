@@ -14,5 +14,9 @@ urlpatterns = [
     path('workspace/<str:workspace_id>/mapping_resource/<str:resource>/<str:resource_id>/<int:current_page>/<int:page_size>', views.MappingResourceView.as_view()),
     path('email_setting', views.SystemSetting.Email.as_view()),
     path('profile', views.SystemProfile.as_view()),
+    path('system/chat_user/user_manage/<int:current_page>/<int:page_size>', views.SystemChatUser.UserManagePage.as_view()),
+    path('system/group', views.SystemGroup.as_view()),
+    path('system/role', views.SystemRole.as_view()),
+    path('system/role/<str:role_id>/permission', views.SystemRolePermission.as_view()),
     path('valid/<str:valid_type>/<int:valid_count>', views.Valid.as_view())
 ]
