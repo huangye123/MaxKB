@@ -45,7 +45,9 @@
             <div v-if="item.isValid" class="border-t mt-16">
               <el-row :gutter="12" class="mt-16">
                 <el-col v-for="(value, key) in item.config" :key="key" :span="12">
-                  <el-text class="color-secondary lighter">{{ formatFieldName(key, item) }}</el-text>
+                  <el-text class="color-secondary lighter">{{
+                    formatFieldName(key, item)
+                  }}</el-text>
                   <div class="mt-4 mb-16 flex align-center">
                     <span
                       v-if="key !== 'app_secret'"
@@ -107,7 +109,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { copyClick } from '@/utils/clipboard'
 import EditModel from './EditModal.vue'
-import platformApi from '@/api/system-settings/platform-source'
+import platformApi, { type PlatformSource } from '@/api/system-settings/platform-source'
 import { MsgError, MsgSuccess } from '@/utils/message'
 import { t } from '@/locales'
 import { PermissionConst, RoleConst } from '@/utils/permission/data'
@@ -192,10 +194,10 @@ function formatFieldName(key?: any, item?: Platform): string {
 
 function getPlatformInfo() {
   loading.value = true
-  platformApi.getPlatformInfo(loading).then((res: any) => {
-    if (res) {
+  platformApi.getPlatformInfo(loading).then((res) => {
+    if (res.data) {
       platforms.forEach((platform) => {
-        const data = res.data.find((item: any) => item.auth_type === platform.key)
+        const data = res.data.find((item: PlatformSource) => item.auth_type === platform.key)
         if (data) {
           Object.assign(platform, {
             isValid: data.is_valid,
