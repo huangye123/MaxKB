@@ -12,7 +12,12 @@ from common.exception.app_exception import AppAuthenticationFailed
 from common.constants.permission_constants import Auth, RoleConstants
 from users.serializers.user import UserManageSerializer, UserProfileSerializer, build_current_user_role_list
 from users.serializers.login import LoginSerializer
-from users.views.user import resolve_current_user_for_role_list, resolve_current_user_auth_for_debug
+from users.views.user import (
+    get_re_password_details,
+    get_user_operation_object,
+    resolve_current_user_for_role_list,
+    resolve_current_user_auth_for_debug,
+)
 from system_manage.serializers.role import build_system_role_list, get_role_permission_tree, get_system_role_list
 from system_manage.serializers.user_resource_permission import build_default_application_resource_permission
 from system_manage.views.user_resource_permission import WorkSpaceUserResourcePermissionView
@@ -120,6 +125,36 @@ class CurrentUserRoleListAuthTest(SimpleTestCase):
         self.assertIs(resolved_user, admin_user)
         self.assertIsInstance(resolved_auth, Auth)
         self.assertIn(RoleConstants.ADMIN.value.__str__(), resolved_auth.role_list)
+
+
+class UserOperationLogTest(SimpleTestCase):
+    def test_re_password_details_do_not_include_password_fields(self):
+        request = SimpleNamespace(
+            path="/admin/api/user/re_password",
+            data={
+                "email": "admin@example.com",
+                "password": "plain-password",
+                "re_password": "plain-password",
+            },
+            query_params={},
+        )
+
+        details = get_re_password_details(request)
+
+        self.assertEqual(details["path"], "/admin/api/user/re_password")
+        self.assertEqual(details["body"], {"email": "admin@example.com"})
+        self.assertNotIn("password", details["body"])
+        self.assertNotIn("re_password", details["body"])
+
+    def test_user_operation_object_uses_username(self):
+        user = SimpleNamespace(username="admin")
+
+        with patch("users.views.user.QuerySet") as query_set:
+            query_set.return_value.filter.return_value.first.return_value = user
+
+            result = get_user_operation_object("user-id")
+
+        self.assertEqual(result, {"name": "admin"})
 
 
 class SystemRoleListTest(SimpleTestCase):

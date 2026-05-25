@@ -28,7 +28,6 @@ from common.utils.common import query_params_to_single_dict
 from common.utils.rsa_util import decrypt
 from maxkb.const import CONFIG
 from models_provider.api.model import DefaultModelResponse
-from tools.serializers.tool import encryption
 from users.api.user import UserProfileAPI, TestWorkspacePermissionUserApi, DeleteUserApi, EditUserApi, \
     ChangeUserPasswordApi, UserPageApi, UserListApi, UserPasswordResponse, WorkspaceUserAPI, ResetPasswordAPI, \
     SendEmailAPI, CheckCodeAPI, SwitchUserLanguageAPI
