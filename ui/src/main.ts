@@ -113,5 +113,5 @@ app.use(i18n)
 app.use(Components)
 // 初始化外置语言包后挂载应用
 initExternalLocales().finally(() => {
+  app.mount('#app')
 })
-app.mount('#app')
