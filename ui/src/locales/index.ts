@@ -14,6 +14,19 @@ const langModuleMap = new Map<string, Record<string, any>>()
 export const langCode: string[] = []
 export const localeConfigKey = 'MaxKB-locale'
 
+const DEFAULT_EXTERNAL_LOCALES = [
+  'ja',
+  'ko-KR',
+  'de-DE',
+  'fr-FR',
+  'es-ES',
+  'ru-RU',
+  'pt-BR',
+  'it-IT',
+  'th-TH',
+  'vi-VN',
+]
+
 const languages = usePreferredLanguages()
 
 export function getBrowserLang() {
@@ -68,18 +81,13 @@ async function discoverExternalLocales(): Promise<string[]> {
   try {
     const response = await fetch(`${EXTERNAL_LOCALES_DIR}/index.json`)
     if (!response.ok) {
-      console.warn('Failed to fetch external locales index, returning empty array')
-      return []
-    }
-    if (!response.headers.get('content-type')?.includes('application/json')) {
-      return []
+      return DEFAULT_EXTERNAL_LOCALES
     }
 
     const index = await response.json()
-    return Array.isArray(index.locales) ? index.locales : []
-  } catch (error) {
-    console.warn('Error discovering external locales:', error)
-    return []
+    return Array.isArray(index.locales) ? index.locales : DEFAULT_EXTERNAL_LOCALES
+  } catch {
+    return DEFAULT_EXTERNAL_LOCALES
   }
 }
 

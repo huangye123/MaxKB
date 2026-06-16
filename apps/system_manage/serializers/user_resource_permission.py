@@ -14,6 +14,7 @@ from django.core.cache import cache
 from django.db import models
 from django.db.models import QuerySet, Q, TextField
 from django.db.models.functions import Cast
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
@@ -95,6 +96,21 @@ sql_map = {
     'MODEL': 'get_model_user_resource_permission.sql',
     'APPLICATION': 'get_application_user_resource_permission.sql'
 }
+
+
+def build_default_application_resource_permission(workspace_id, user_id):
+    return {
+        "id": "default",
+        "name": "\u6839\u76ee\u5f55",
+        "auth_target_type": "APPLICATION",
+        "resource_type": "folder",
+        "user_id": user_id,
+        "workspace_id": workspace_id,
+        "icon": None,
+        "folder_id": None,
+        "create_time": timezone.now(),
+        "permission": ResourcePermission.MANAGE.value,
+    }
 
 
 class UserResourcePermissionUserListRequest(serializers.Serializer):
@@ -226,8 +242,11 @@ class UserResourcePermissionSerializer(serializers.Serializer):
         user_resource_permission_list = native_search(self.get_queryset(instance), get_file_content(
             os.path.join(PROJECT_DIR, "apps", "system_manage", 'sql', sql_map.get(self.data.get('auth_target_type')))))
 
-        return [{**user_resource_permission}
-                for user_resource_permission in user_resource_permission_list]
+        result = [{**user_resource_permission}
+                  for user_resource_permission in user_resource_permission_list]
+        if not result and self.data.get('auth_target_type') == 'APPLICATION':
+            return [build_default_application_resource_permission(workspace_id, user_id)]
+        return result
 
     def page(self, instance, current_page: int, page_size: int, user, with_valid=True):
         if with_valid:

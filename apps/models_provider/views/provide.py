@@ -6,7 +6,7 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 
 from common import result
-from common.auth import TokenAuth
+from common.auth import AnonymousAuthentication, TokenAuth
 from common.auth.authentication import has_permissions
 from common.constants.permission_constants import PermissionConstants
 from models_provider.api.provide import ProvideApi
@@ -15,7 +15,7 @@ from models_provider.serializers.model_serializer import get_default_model_param
 
 
 class Provide(APIView):
-    authentication_classes = [TokenAuth]
+    authentication_classes = [AnonymousAuthentication]
 
     @extend_schema(methods=['GET'],
                    summary=_('Get a list of model suppliers'),

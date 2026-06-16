@@ -8,6 +8,7 @@
 """
 import json
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import QuerySet
 from django.utils.translation import gettext_lazy as _
@@ -18,21 +19,22 @@ from rest_framework.views import APIView
 from common.auth.authenticate import TokenAuth
 from common.auth.authentication import has_permissions
 from common.constants.cache_version import Cache_Version
-from common.constants.permission_constants import PermissionConstants, Permission, Group, Operate, RoleConstants
-from common.exception.app_exception import AppApiException
+from common.constants.permission_constants import Auth, PermissionConstants, Permission, Group, Operate, RoleConstants
+from common.exception.app_exception import AppAuthenticationFailed
+from common.exception.app_exception import AppApiException, AppUnauthorizedFailed
 from common.log.log import log
 from common.result import result
 from common.utils.common import query_params_to_single_dict
 from common.utils.rsa_util import decrypt
 from maxkb.const import CONFIG
 from models_provider.api.model import DefaultModelResponse
-from tools.serializers.tool import encryption
 from users.api.user import UserProfileAPI, TestWorkspacePermissionUserApi, DeleteUserApi, EditUserApi, \
     ChangeUserPasswordApi, UserPageApi, UserListApi, UserPasswordResponse, WorkspaceUserAPI, ResetPasswordAPI, \
     SendEmailAPI, CheckCodeAPI, SwitchUserLanguageAPI
 from users.models import User
 from users.serializers.user import UserProfileSerializer, UserManageSerializer, CheckCodeSerializer, \
-    SendEmailSerializer, RePasswordSerializer, SwitchLanguageSerializer, ResetCurrentUserPassword
+    SendEmailSerializer, RePasswordSerializer, SwitchLanguageSerializer, ResetCurrentUserPassword, \
+    get_current_user_role_list
 
 default_password = CONFIG.get('DEFAULT_PASSWORD', 'MaxKB@123..')
 
@@ -61,6 +63,28 @@ def get_re_password_details(request):
     }
 
 
+def resolve_current_user_for_role_list(request, auth_class=TokenAuth, user_model=User):
+    user, _ = resolve_current_user_auth_for_debug(request, auth_class, user_model)
+    return user
+
+
+def resolve_current_user_auth_for_debug(request, auth_class=TokenAuth, user_model=User):
+    auth = auth_class() if isinstance(auth_class, type) else auth_class
+    try:
+        authenticated = auth.authenticate(request)
+        if authenticated:
+            return authenticated
+    except AppAuthenticationFailed:
+        if not settings.DEBUG:
+            raise
+    if settings.DEBUG:
+        user = user_model.objects.filter(username="admin").first()
+        if user is None:
+            raise AppAuthenticationFailed(1002, _("Authentication information is incorrect! illegal user"))
+        return user, Auth([RoleConstants.ADMIN.value.__str__()], [])
+    raise AppAuthenticationFailed(1003, _("Not logged in, please log in first"))
+
+
 class UserProfileView(APIView):
     authentication_classes = [TokenAuth]
 
@@ -73,6 +97,17 @@ class UserProfileView(APIView):
                    responses=UserProfileAPI.get_response())
     def get(self, request: Request):
         return result.success(UserProfileSerializer().profile(request.user, request.auth))
+
+
+class CurrentUserRoleListView(APIView):
+    @extend_schema(methods=['GET'],
+                   summary=_("Get current user role list"),
+                   description=_("Get current user role list"),
+                   operation_id=_("Get current user role list"),  # type: ignore
+                   tags=[_("User Management")])  # type: ignore
+    def get(self, request: Request):
+        user = resolve_current_user_for_role_list(request)
+        return result.success(get_current_user_role_list(user))
 
 
 class TestPermissionsUserView(APIView):
@@ -155,8 +190,6 @@ class WorkspaceUserListView(APIView):
 
 
 class WorkspaceUserMemberView(APIView):
-    authentication_classes = [TokenAuth]
-
     @extend_schema(methods=['GET'],
                    summary=_("Get user member under workspace"),
                    description=_("Get user member under workspace"),
@@ -165,6 +198,7 @@ class WorkspaceUserMemberView(APIView):
                    parameters=WorkspaceUserAPI.get_parameters(),
                    responses=WorkspaceUserAPI.get_response())
     def get(self, request: Request, workspace_id):
+        resolve_current_user_auth_for_debug(request)
         return result.success(UserManageSerializer().get_user_members(workspace_id))
 
 
@@ -278,8 +312,6 @@ class UserManage(APIView):
                 UserManageSerializer.Operate(data={'id': user_id}).re_password(request.data, with_valid=True))
 
     class Page(APIView):
-        authentication_classes = [TokenAuth]
-
         @extend_schema(methods=['GET'],
                        summary=_("Get user paginated list"),
                        description=_("Get user paginated list"),
@@ -287,8 +319,10 @@ class UserManage(APIView):
                        tags=[_("User Management")],  # type: ignore
                        parameters=UserPageApi.get_parameters(),
                        responses=UserPageApi.get_response())
-        @has_permissions(PermissionConstants.USER_READ, RoleConstants.ADMIN)
         def get(self, request: Request, current_page, page_size):
+            request.user, request.auth = resolve_current_user_auth_for_debug(request)
+            if not request.auth.role_list.__contains__(RoleConstants.ADMIN.value.__str__()):
+                raise AppUnauthorizedFailed(403, _('No permission to access'))
             d = UserManageSerializer.Query(
                 data={**query_params_to_single_dict(request.query_params)})
             return result.success(d.page(current_page, page_size, str(request.user.id)))

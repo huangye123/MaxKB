@@ -48,6 +48,32 @@ class UserGroupRelation(models.Model):
         db_table = "user_group_relation"
 
 
+class ChatUserAuth(models.Model):
+    id = models.UUIDField(primary_key=True, max_length=128, default=uuid.uuid7, editable=False, verbose_name="主键id")
+    auth_type = models.CharField(max_length=20, unique=True, db_index=True, verbose_name="认证类型")
+    config = models.JSONField(default=dict, verbose_name="认证配置")
+    type = models.CharField(max_length=20, db_index=True, default="SSO", verbose_name="类型")
+    is_active = models.BooleanField(default=False, db_index=True, verbose_name="是否启用")
+    is_valid = models.BooleanField(default=False, db_index=True, verbose_name="是否有效")
+
+    class Meta:
+        db_table = "chat_user_platform_source"
+
+
+class PlatformSourceAuth(models.Model):
+    id = models.UUIDField(primary_key=True, max_length=128, default=uuid.uuid7, editable=False, verbose_name="涓婚敭id")
+    auth_type = models.CharField(max_length=20, unique=True, db_index=True, verbose_name="璁よ瘉绫诲瀷")
+    config = models.JSONField(default=dict, verbose_name="璁よ瘉閰嶇疆")
+    type = models.CharField(max_length=20, db_index=True, default="SSO", verbose_name="绫诲瀷")
+    is_active = models.BooleanField(default=False, db_index=True, verbose_name="鏄惁鍚敤")
+    is_valid = models.BooleanField(default=False, db_index=True, verbose_name="鏄惁鏈夋晥")
+    create_time = models.DateTimeField(verbose_name="鍒涘缓鏃堕棿", auto_now_add=True, db_index=True)
+    update_time = models.DateTimeField(verbose_name="淇敼鏃堕棿", auto_now=True, db_index=True)
+
+    class Meta:
+        db_table = "platform_source"
+
+
 class ResourceType(models.TextChoices):
     """资源类型"""
     KNOWLEDGE = Group.KNOWLEDGE.value, '知识库'

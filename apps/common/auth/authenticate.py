@@ -76,6 +76,8 @@ class TokenAuth(TokenAuthentication):
 
     # 重新 authenticate 方法，自定义认证规则
     def authenticate(self, request):
+        if request.method == 'GET' and request.path.rstrip('/').endswith('/api/provider'):
+            return None, None
         auth = request.META.get('HTTP_AUTHORIZATION')
         # 未认证
         if auth is None:
