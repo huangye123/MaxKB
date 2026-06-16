@@ -4,7 +4,7 @@ import types
 
 sys.path.insert(0, "apps")
 
-os.environ.setdefault("MAXKB_LOG_DIR", os.path.abspath("data/logs"))
+os.environ["MAXKB_LOG_DIR"] = os.path.abspath(os.path.join("data", "debug_logs"))
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "maxkb.settings")
 os.environ.setdefault("MAXKB_CONFIG_TYPE", "ENV")
 os.environ.setdefault("PGSQL_HOST", "172.16.2.103")
