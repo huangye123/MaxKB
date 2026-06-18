@@ -185,6 +185,7 @@ class KnowledgeWorkflowActionSerializer(serializers.Serializer):
                 "knowledge_action_id": knowledge_action_id,
                 "stream": True,
                 "workspace_id": self.data.get("workspace_id"),
+                "user_id": str(user.id),
                 **instance,
             },
             KnowledgeWorkflowPostHandler(None, knowledge_action_id),
@@ -467,7 +468,7 @@ class KnowledgeWorkflowSerializer(serializers.Serializer):
             work_flow = knowledge_workflow.get("work_flow")
             for node in work_flow.get("nodes", []):
                 hand_node(node, update_tool_map)
-                if node.get("type") == "loop_node":
+                if node.get("type") == "loop-node":
                     for n in node.get("properties", {}).get("node_data", {}).get("loop_body", {}).get("nodes", []):
                         hand_node(n, update_tool_map)
             return work_flow
