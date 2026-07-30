@@ -1,15 +1,15 @@
 # coding=utf-8
-from django.utils.translation import gettext_lazy as _
-from drf_spectacular.utils import extend_schema
-from rest_framework.parsers import MultiPartParser
-from rest_framework.views import APIView
-from rest_framework.views import Request
-from common.auth import TokenAuth, AllTokenAuth
-from common.constants.permission_constants import ChatAuth
+from common.auth import AllTokenAuth, TokenAuth
+from common.auth.authentication import has_permissions
+from common.constants.permission_constants import ChatAuth, RoleConstants
 from common.log.log import log
 from common.result import result
-from knowledge.api.file import FileUploadAPI, FileGetAPI, GetUrlContentAPI
+from django.utils.translation import gettext_lazy as _
+from drf_spectacular.utils import extend_schema
+from knowledge.api.file import FileGetAPI, FileUploadAPI, GetUrlContentAPI
 from oss.serializers.file import FileSerializer, get_url_content
+from rest_framework.parsers import MultiPartParser
+from rest_framework.views import APIView, Request
 
 
 class FileRetrievalView(APIView):
@@ -26,7 +26,7 @@ class FileRetrievalView(APIView):
         return FileSerializer.Operate(data={
             'id': file_id,
             'http_range': request.headers.get('Range', ''),
-        }).get()
+        }).get(mk_file_auth=request.COOKIES.get('mk_file_auth'))
 
 
 class FileView(APIView):
@@ -49,7 +49,7 @@ class FileView(APIView):
             'file': request.FILES.get('file'),
             'source_id': request.data.get('source_id'),
             'source_type': request.data.get('source_type'),
-        }).upload())
+        }).upload(user_id=(str(request.user.id) if request.user else request.auth.chat_user_id)))
 
     class Operate(APIView):
         authentication_classes = [TokenAuth]
@@ -64,8 +64,14 @@ class FileView(APIView):
             tags=[_('File')]  # type: ignore
         )
         @log(menu='file', operate='Delete file')
+        @has_permissions(RoleConstants.ADMIN, RoleConstants.WORKSPACE_MANAGE, RoleConstants.USER)
         def delete(self, request: Request, file_id: str):
-            return result.success(FileSerializer.Operate(data={'id': file_id}).delete())
+            return result.success(FileSerializer.Operate(
+                data={
+                    "id": file_id,
+                    "http_range": request.headers.get("Range", ""),
+                }
+            ).delete(mk_file_auth=request.COOKIES.get("mk_file_auth")))
 
 
 class GetUrlView(APIView):

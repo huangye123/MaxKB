@@ -384,9 +384,8 @@ class ChatSerializers(serializers.Serializer):
                 return chat_record_list[-1]
             chat_record = QuerySet(ChatRecord).filter(id=chat_record_id, chat_id=chat_info.chat_id).first()
             if chat_record is None:
-                raise ChatException(500, _("Conversation record does not exist"))
-            
-            return chat_record
+                if not is_valid_uuid(chat_record_id):
+                    raise ChatException(500, _("Conversation record does not exist"))
         chat_record = QuerySet(ChatRecord).filter(id=chat_record_id).first()
         return chat_record
 
@@ -496,11 +495,16 @@ class ChatSerializers(serializers.Serializer):
             return self.re_open_chat_work_flow(chat_id, application)
 
     def re_open_chat_simple(self, chat_id, application):
-        # 数据集id列表
-        knowledge_id_list = [str(row.target_id) for row in
-                             QuerySet(ResourceMapping).filter(source_id=str(application.id),
-                                                              source_type='APPLICATION',
-                                                              target_type='KNOWLEDGE')]
+        if self.data.get('debug'):
+            # 数据集id列表
+            knowledge_id_list = [str(row.target_id) for row in
+                                 QuerySet(ResourceMapping).filter(source_id=str(application.id),
+                                                                  source_type='APPLICATION',
+                                                                  target_type='KNOWLEDGE')]
+        else:
+            application_version = QuerySet(ApplicationVersion).filter(application_id=application.id).order_by(
+                '-create_time')[0:1].first()
+            knowledge_id_list = application_version.knowledge_ids
 
         # 需要排除的文档
         exclude_document_id_list = [str(document.id) for document in
@@ -585,10 +589,15 @@ class OpenChatSerializers(serializers.Serializer):
         ip_address = self.data.get("ip_address")
         source = self.data.get("source")
         debug = self.data.get("debug")
-        knowledge_id_list = [str(row.target_id) for row in
-                             QuerySet(ResourceMapping).filter(source_id=str(application_id),
-                                                              source_type='APPLICATION',
-                                                              target_type='KNOWLEDGE')]
+        if debug:
+            knowledge_id_list = [str(row.target_id) for row in
+                                 QuerySet(ResourceMapping).filter(source_id=str(application_id),
+                                                                  source_type='APPLICATION',
+                                                                  target_type='KNOWLEDGE')]
+        else:
+            application_version = QuerySet(ApplicationVersion).filter(application_id=application_id).order_by(
+                '-create_time')[0:1].first()
+            knowledge_id_list = application_version.knowledge_ids
 
         chat_id = str(uuid.uuid7())
         ChatInfo(chat_id, chat_user_id, chat_user_type, ip_address, source, knowledge_id_list,

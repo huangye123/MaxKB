@@ -19,9 +19,8 @@ from rest_framework.views import APIView
 from common.auth.authenticate import TokenAuth
 from common.auth.authentication import has_permissions
 from common.constants.cache_version import Cache_Version
-from common.constants.permission_constants import Auth, PermissionConstants, Permission, Group, Operate, RoleConstants
-from common.exception.app_exception import AppAuthenticationFailed
-from common.exception.app_exception import AppApiException, AppUnauthorizedFailed
+from common.constants.permission_constants import Auth, PermissionConstants, RoleConstants
+from common.exception.app_exception import AppApiException, AppAuthenticationFailed, AppUnauthorizedFailed
 from common.log.log import log
 from common.result import result
 from common.utils.common import query_params_to_single_dict
@@ -166,6 +165,7 @@ class UserList(APIView):
                    description=_("Get all user"),
                    operation_id=_("Get all user"),  # type: ignore
                    tags=[_("User Management")],  # type: ignore
+                   parameters=UserListApi.get_parameters(),
                    responses=UserListApi.get_response())
     @has_permissions(RoleConstants.WORKSPACE_MANAGE, RoleConstants.ADMIN, RoleConstants.EXTENDS_ADMIN,
                      RoleConstants.EXTENDS_WORKSPACE_MANAGE, RoleConstants.USER, RoleConstants.EXTENDS_USER)
@@ -184,6 +184,8 @@ class WorkspaceUserListView(APIView):
                    tags=[_("User Management")],  # type: ignore
                    parameters=WorkspaceUserAPI.get_parameters(),
                    responses=WorkspaceUserAPI.get_response())
+    @has_permissions(RoleConstants.WORKSPACE_MANAGE, RoleConstants.ADMIN, RoleConstants.EXTENDS_ADMIN,
+                     RoleConstants.EXTENDS_WORKSPACE_MANAGE, RoleConstants.USER, RoleConstants.EXTENDS_USER)
     def get(self, request: Request, workspace_id):
         nick_name = request.query_params.get('nick_name', None)
         return result.success(UserManageSerializer().get_user_list(workspace_id, nick_name))
@@ -197,6 +199,8 @@ class WorkspaceUserMemberView(APIView):
                    tags=[_("User Management")],  # type: ignore
                    parameters=WorkspaceUserAPI.get_parameters(),
                    responses=WorkspaceUserAPI.get_response())
+    @has_permissions(RoleConstants.WORKSPACE_MANAGE, RoleConstants.ADMIN, RoleConstants.EXTENDS_ADMIN,
+                     RoleConstants.EXTENDS_WORKSPACE_MANAGE, RoleConstants.USER, RoleConstants.EXTENDS_USER)
     def get(self, request: Request, workspace_id):
         resolve_current_user_auth_for_debug(request)
         return result.success(UserManageSerializer().get_user_members(workspace_id))

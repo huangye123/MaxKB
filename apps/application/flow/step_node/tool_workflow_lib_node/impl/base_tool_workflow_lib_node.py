@@ -14,7 +14,7 @@ import uuid_utils.compat as uuid
 from django.db.models import QuerySet
 from django.utils.translation import gettext_lazy as _
 
-from application.flow.common import WorkflowMode, Workflow
+from application.flow.common import WorkflowMode, Workflow, Answer
 from application.flow.i_step_node import NodeResult, ToolWorkflowPostHandler, INode
 from application.flow.step_node.tool_workflow_lib_node.i_tool_workflow_lib_node import IToolWorkflowLibNode
 from application.models import ChatRecord
@@ -22,6 +22,7 @@ from application.serializers.common import ToolExecute
 from common.database_model_manage.database_model_manage import DatabaseModelManage
 from common.exception.app_exception import ChatException
 from common.handle.impl.response.loop_to_response import LoopToResponse
+from common.utils.shared_resource_auth import get_runtime_user_id, validate_authorized_tool_ids
 from tools.models import ToolWorkflowVersion, Tool
 
 
@@ -132,7 +133,7 @@ def _is_interrupt_exec(node, node_variable: Dict, workflow_variable: Dict):
     return node.context.get('is_interrupt_exec', False)
 
 
-def valid_function(tool_lib, workspace_id):
+def valid_function(tool_lib, workspace_id, user_id=None):
     if tool_lib is None:
         raise Exception(_('Tool does not exist'))
     get_authorized_tool = DatabaseModelManage.get_model("get_authorized_tool")
@@ -142,9 +143,21 @@ def valid_function(tool_lib, workspace_id):
         raise Exception(_("Tool does not exist"))
     if not tool_lib.is_active:
         raise Exception(_("Tool is not active"))
+    validate_authorized_tool_ids([str(tool_lib.id)], workspace_id, user_id)
 
 
 class BaseToolWorkflowLibNodeNode(IToolWorkflowLibNode):
+    def get_answer_list(self):
+        try:
+            child_answer_data = self.context.get('child_answer_data') or []
+            return [
+                Answer(item.get('content'), item.get('view_type'), item.get('runtime_node_id'),
+                       item.get('chat_record_id'),
+                       item.get('child_node'), item.get('real_node_id'), item.get('reasoning_content')) for item in
+                child_answer_data]
+        except Exception as e:
+            return []
+
     def get_parameters(self, input_field_list):
         result = {}
         for input in input_field_list:
@@ -184,13 +197,19 @@ class BaseToolWorkflowLibNodeNode(IToolWorkflowLibNode):
 
     def execute(self, tool_lib_id, input_field_list, **kwargs) -> NodeResult:
         from application.flow.tool_workflow_manage import ToolWorkflowManage
-        workspace_id = self.workflow_manage.get_body().get('workspace_id')
+        body = self.workflow_manage.get_body()
+        workspace_id = body.get('workspace_id')
+        runtime_user_id = get_runtime_user_id(
+            user_id=body.get("user_id"),
+            chat_user_id=body.get("chat_user_id"),
+            chat_user_type=body.get("chat_user_type"),
+        )
         tool_workflow_version = QuerySet(ToolWorkflowVersion).filter(tool_id=tool_lib_id).order_by(
             '-create_time')[0:1].first()
         if tool_workflow_version is None:
             raise ChatException(500, _("The tool has not been published. Please use it after publishing."))
         tool_lib = QuerySet(Tool).filter(id=tool_lib_id).first()
-        valid_function(tool_lib, workspace_id)
+        valid_function(tool_lib, workspace_id, runtime_user_id)
         parameters = self.get_parameters(input_field_list)
         tool_record_id = (self.node_params.get('child_node') or {}).get('chat_record_id') or str(uuid.uuid7())
         took_execute = ToolExecute(tool_lib_id, tool_record_id,
@@ -208,6 +227,7 @@ class BaseToolWorkflowLibNodeNode(IToolWorkflowLibNode):
                     'tool_id': tool_lib_id,
                     'stream': True,
                     'workspace_id': workspace_id,
+                    'user_id': runtime_user_id,
                     **parameters},
                 ToolWorkflowPostHandler(took_execute, tool_lib_id),
                 base_to_response=LoopToResponse(),

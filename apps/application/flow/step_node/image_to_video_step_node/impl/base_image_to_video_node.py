@@ -5,8 +5,8 @@ from typing import List
 
 import requests
 from django.db.models import QuerySet
+from django.utils.translation import gettext_lazy as _, gettext
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
-from django.utils.translation import gettext_lazy as _
 from application.flow.common import WorkflowMode
 from application.flow.i_step_node import NodeResult
 from application.flow.step_node.image_to_video_step_node.i_image_to_video_node import IImageToVideoNode
@@ -14,7 +14,6 @@ from common.utils.common import bytes_to_uploaded_file
 from knowledge.models import FileSourceType, File
 from oss.serializers.file import FileSerializer, mime_types
 from models_provider.tools import get_model_instance_by_model_workspace_id
-from django.utils.translation import gettext
 
 
 class BaseImageToVideoNode(IImageToVideoNode):
@@ -128,12 +127,12 @@ class BaseImageToVideoNode(IImageToVideoNode):
         return file_url
 
     def upload_application_file(self, file):
-        application = self.workflow_manage.work_flow_post_handler.chat_info.application
+        application_id = self.workflow_manage.work_flow_post_handler.chat_info.application_id
         chat_id = self.workflow_params.get('chat_id')
         meta = {
-            'debug': False if application.id else True,
+            'debug': False if application_id else True,
             'chat_id': chat_id,
-            'application_id': str(application.id) if application.id else None,
+            'application_id': str(application_id) if application_id else None,
         }
         file_url = FileSerializer(data={
             'file': file,

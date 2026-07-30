@@ -677,10 +677,8 @@ class DocumentView(APIView):
             tags=[_("Knowledge Base/Documentation")],  # type: ignore
         )
         @has_permissions(
-            PermissionConstants.KNOWLEDGE_DOCUMENT_VECTOR.get_workspace_knowledge_permission(),
-            PermissionConstants.KNOWLEDGE_DOCUMENT_VECTOR.get_workspace_permission_workspace_manage_role(),
-            PermissionConstants.KNOWLEDGE_DOCUMENT_EDIT.get_workspace_knowledge_permission(),
-            PermissionConstants.KNOWLEDGE_DOCUMENT_EDIT.get_workspace_permission_workspace_manage_role(),
+            PermissionConstants.KNOWLEDGE_DOCUMENT_TOKEN.get_workspace_knowledge_permission(),
+            PermissionConstants.KNOWLEDGE_DOCUMENT_TOKEN.get_workspace_permission_workspace_manage_role(),
             RoleConstants.WORKSPACE_MANAGE.get_workspace_role(),
             ViewPermission(
                 [RoleConstants.USER.get_workspace_role()],
@@ -968,7 +966,7 @@ class DocumentView(APIView):
         def get(self, request: Request, workspace_id: str, knowledge_id: str, document_id: str):
             return DocumentSerializers.Operate(
                 data={"workspace_id": workspace_id, "document_id": document_id, "knowledge_id": knowledge_id}
-            ).download_source_file()
+            ).download_source_file(mk_file_auth=request.COOKIES.get('mk_file_auth'))
 
     class ReplaceSourceFile(APIView):
         authentication_classes = [TokenAuth]

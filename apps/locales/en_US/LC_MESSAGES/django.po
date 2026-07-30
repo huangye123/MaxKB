@@ -6815,7 +6815,7 @@ msgstr ""
 #: apps/users/views/user.py:120 apps/users/views/user.py:121
 #: apps/users/views/user.py:122
 msgid "Get all user"
-msgstr ""
+msgstr "Retrieve users by their names (up to 200 users)"
 
 #: apps/users/views/user.py:133 apps/users/views/user.py:134
 #: apps/users/views/user.py:135
@@ -9382,3 +9382,9 @@ msgstr "User Name"
 
 msgid "New chat"
 msgstr "A new conversation has been generated. Please ask your question again！"
+
+msgid "Token Index"
+msgstr "Token Index"
+
+msgid "Authorize to Workspace"
+msgstr ""

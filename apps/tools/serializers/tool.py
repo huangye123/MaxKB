@@ -26,6 +26,7 @@ from common.utils.common import bytes_to_uploaded_file, common_convert_value, ge
 from common.utils.logger import maxkb_logger
 from common.utils.rsa_util import rsa_long_decrypt, rsa_long_encrypt
 from common.utils.tool_code import ToolExecutor
+from common.utils.url_validator import ALLOWED_CALLBACK_HOSTS, ALLOWED_DOWNLOAD_HOSTS, validate_trusted_url
 from django.core import validators
 from django.core.cache import cache
 from django.db import transaction
@@ -43,11 +44,10 @@ from system_manage.models import AuthTargetType, WorkspaceUserResourcePermission
 from system_manage.models.resource_mapping import ResourceMapping
 from system_manage.serializers.resource_mapping_serializers import ResourceMappingSerializer
 from system_manage.serializers.user_resource_permission import UserResourcePermissionSerializer
-from trigger.models import Trigger, TriggerTask
-from users.serializers.user import is_workspace_manage, is_workspace_manage_permission_read
-
 from tools.models import Tool, ToolFolder, ToolRecord, ToolScope, ToolType
 from tools.models.tool_workflow import ToolWorkflow
+from trigger.models import Trigger, TriggerTask
+from users.serializers.user import is_workspace_manage, is_workspace_manage_permission_read
 
 tool_executor = ToolExecutor()
 
@@ -477,10 +477,10 @@ class ToolSerializer(serializers.Serializer):
             if instance.get("work_flow_template") is not None:
                 template_instance = instance.get("work_flow_template")
                 download_url = template_instance.get("downloadUrl")
-                if not download_url.startswith("https://apps-assets.fit2cloud.com/"):
+                if not validate_trusted_url(download_url, ALLOWED_DOWNLOAD_HOSTS):
                     raise AppApiException(500, _("Illegal download url"))
                 # 查找匹配的版本名称
-                res = requests.get(download_url, timeout=5)
+                res = requests.get(download_url, timeout=5, allow_redirects=False)
                 tool = ToolSerializer.Import(
                     data={
                         "file": bytes_to_uploaded_file(res.content, "file.tool"),
@@ -492,9 +492,9 @@ class ToolSerializer(serializers.Serializer):
 
                 try:
                     download_callback_url = template_instance.get("downloadCallbackUrl", "")
-                    if not download_callback_url.startswith("https://apps.fit2cloud.com"):
+                    if not validate_trusted_url(download_callback_url, ALLOWED_CALLBACK_HOSTS):
                        raise AppApiException(500, _("Illegal download callback url"))
-                    requests.get(download_callback_url, timeout=5)
+                    requests.get(download_callback_url, timeout=5, allow_redirects=False)
                 except Exception as e:
                     maxkb_logger.error(f"callback appstore tool download error: {e}")
                 return tool
@@ -569,6 +569,7 @@ class ToolSerializer(serializers.Serializer):
             input_field_list = debug_instance.get("input_field_list")
             code = debug_instance.get("code")
             debug_field_list = debug_instance.get("debug_field_list")
+            init_field_list = debug_instance.get("init_field_list", [])
             init_params = debug_instance.get("init_params")
             params = {
                 field.get("name"): self.convert_value(
@@ -582,11 +583,13 @@ class ToolSerializer(serializers.Serializer):
                     for field in input_field_list
                 ]
             }
+            # 合并初始化参数（默认值 → 已保存的启动参数 → 运行时入参）
+            init_params_default_value = {i["field"]: i.get('default_value') for i in init_field_list}
             # 合并初始化参数
             if init_params is not None:
-                all_params = init_params | params
+                all_params = init_params_default_value | init_params | params
             else:
-                all_params = params
+                all_params = init_params_default_value | params
             return tool_executor.exec_code(code, all_params)
 
         @staticmethod
@@ -646,7 +649,9 @@ class ToolSerializer(serializers.Serializer):
                 if instance.get("tool_type") == ToolType.MCP:
                     ToolExecutor().validate_mcp_transport(instance.get("code", ""))
 
-            if not QuerySet(Tool).filter(id=self.data.get("id")).exists():
+            if not QuerySet(Tool).filter(
+                id=self.data.get("id"), workspace_id=self.data.get("workspace_id")
+            ).exists():
                 raise serializers.ValidationError(_("Tool not found"))
 
             edit_field_list = [
@@ -666,7 +671,9 @@ class ToolSerializer(serializers.Serializer):
                 if (field in instance and instance.get(field) is not None)
             }
 
-            tool = QuerySet(Tool).filter(id=self.data.get("id")).first()
+            tool = QuerySet(Tool).filter(
+                id=self.data.get("id"), workspace_id=self.data.get("workspace_id")
+            ).first()
             if "init_params" in edit_dict:
                 if edit_dict["init_field_list"] is not None:
                     rm_key = []
@@ -683,7 +690,9 @@ class ToolSerializer(serializers.Serializer):
                 edit_dict["init_params"] = rsa_long_encrypt(json.dumps(edit_dict["init_params"]))
 
             edit_dict["update_time"] = timezone.now()
-            QuerySet(Tool).filter(id=self.data.get("id")).update(**edit_dict)
+            QuerySet(Tool).filter(
+                id=self.data.get("id"), workspace_id=self.data.get("workspace_id")
+            ).update(**edit_dict)
             if "is_active" in instance:
                 QuerySet(TriggerTask).filter(source_type="TOOL", source_id=self.data.get("id")).update(
                     is_active=instance.get("is_active")
@@ -705,13 +714,19 @@ class ToolSerializer(serializers.Serializer):
             from trigger.serializers.trigger import TriggerModelSerializer
 
             self.is_valid(raise_exception=True)
-            tool = QuerySet(Tool).filter(id=self.data.get("id")).first()
+            tool = QuerySet(Tool).filter(
+                id=self.data.get("id"), workspace_id=self.data.get("workspace_id")
+            ).first()
+            if tool is None:
+                raise serializers.ValidationError(_("Tool not found"))
             if tool.template_id is None and tool.icon != "":
                 QuerySet(File).filter(id=tool.icon.split("/")[-1]).delete()
             if tool.tool_type == ToolType.SKILL:
                 QuerySet(File).filter(id=tool.code).delete()
             QuerySet(WorkspaceUserResourcePermission).filter(target=tool.id).delete()
-            QuerySet(Tool).filter(id=self.data.get("id")).delete()
+            QuerySet(Tool).filter(
+                id=self.data.get("id"), workspace_id=self.data.get("workspace_id")
+            ).delete()
             ResourceMapping.objects.filter(Q(target_id=self.data.get("id")) | Q(source_id=self.data.get("id"))).delete()
             QuerySet(ToolRecord).filter(tool_id=self.data.get("id")).delete()
             trigger_ids = list(
@@ -720,7 +735,9 @@ class ToolSerializer(serializers.Serializer):
                 .values("trigger_id")
                 .distinct()
             )
-            QuerySet(TriggerTask).filter(source_type="TOOL", source_id=self.data.get("id")).delete()
+            QuerySet(TriggerTask).filter(
+                source_type="TOOL", source_id=self.data.get("id")
+            ).delete()
             for trigger_id in trigger_ids:
                 trigger = Trigger.objects.filter(id=trigger_id["trigger_id"]).first()
                 if trigger and trigger.is_active:
@@ -1212,7 +1229,9 @@ class ToolSerializer(serializers.Serializer):
                 self.is_valid(raise_exception=True)
                 AddInternalToolRequest(data=instance).is_valid(raise_exception=True)
 
-            internal_tool = QuerySet(Tool).filter(id=self.data.get("tool_id")).first()
+            internal_tool = QuerySet(Tool).filter(
+                id=self.data.get("tool_id"), scope=ToolScope.INTERNAL
+            ).first()
             if internal_tool is None:
                 raise AppApiException(500, _("Tool does not exist"))
 
@@ -1312,13 +1331,13 @@ class ToolSerializer(serializers.Serializer):
 
             versions = instance.get("versions", [])
             download_url = instance.get("download_url")
-            if not download_url.startswith("https://apps-assets.fit2cloud.com/"):
+            if not validate_trusted_url(download_url, ALLOWED_DOWNLOAD_HOSTS):
                 raise AppApiException(500, _("Illegal download url"))
             # 查找匹配的版本名称
             version_name = next(
                 (version.get("name") for version in versions if version.get("downloadUrl") == download_url),
             )
-            res = requests.get(download_url, timeout=5)
+            res = requests.get(download_url, timeout=5, allow_redirects=False)
             tool_data = RestrictedUnpickler(io.BytesIO(res.content)).load().tool
             tool_id = uuid.uuid7()
             # 如果是SKILL类型的工具，保存文件内容到file表，并将code替换为file_id
@@ -1362,7 +1381,10 @@ class ToolSerializer(serializers.Serializer):
                 }
             ).auth_resource(str(tool_id))
             try:
-                requests.get(instance.get("download_callback_url"), timeout=5)
+                download_callback_url = instance.get("download_callback_url")
+                if not validate_trusted_url(download_callback_url, ALLOWED_CALLBACK_HOSTS):
+                    raise AppApiException(500, _("Illegal download callback url"))
+                requests.get(download_callback_url, timeout=5, allow_redirects=False)
             except Exception as e:
                 maxkb_logger.error(f"callback appstore tool download error: {e}")
             return ToolModelSerializer(tool).data
@@ -1379,7 +1401,11 @@ class ToolSerializer(serializers.Serializer):
         def update_tool(self, with_valid=True):
             if with_valid:
                 self.is_valid(raise_exception=True)
-            tool = QuerySet(Tool).filter(id=self.data.get("tool_id")).first()
+            if not validate_trusted_url(self.data.get("download_url"), ALLOWED_DOWNLOAD_HOSTS):
+                raise AppApiException(500, _("Illegal download url"))
+            tool = QuerySet(Tool).filter(
+                id=self.data.get("tool_id"), workspace_id=self.data.get("workspace_id")
+            ).first()
             if tool is None:
                 raise AppApiException(500, _("Tool does not exist"))
             # 查找匹配的版本名称
@@ -1390,7 +1416,7 @@ class ToolSerializer(serializers.Serializer):
                     if version.get("downloadUrl") == self.data.get("download_url")
                 ),
             )
-            res = requests.get(self.data.get("download_url"), timeout=5)
+            res = requests.get(self.data.get("download_url"), timeout=5, allow_redirects=False)
             tool_data = RestrictedUnpickler(io.BytesIO(res.content)).load().tool
             # 如果是SKILL类型的工具，保存文件内容到file表，并将code替换为file_id
             if tool_data.get("tool_type") == ToolType.SKILL:
@@ -1413,7 +1439,10 @@ class ToolSerializer(serializers.Serializer):
             # tool.is_active = False
             tool.save()
             try:
-                requests.get(self.data.get("download_callback_url"), timeout=5)
+                download_callback_url = self.data.get("download_callback_url")
+                if not validate_trusted_url(download_callback_url, ALLOWED_CALLBACK_HOSTS):
+                    raise AppApiException(500, _("Illegal download callback url"))
+                requests.get(download_callback_url, timeout=5, allow_redirects=False)
             except Exception as e:
                 maxkb_logger.error(f"callback appstore tool download error: {e}")
             return ToolModelSerializer(tool).data
