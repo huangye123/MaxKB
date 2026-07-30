@@ -192,6 +192,8 @@ class WorkspaceUserListView(APIView):
 
 
 class WorkspaceUserMemberView(APIView):
+    authentication_classes = [TokenAuth]
+
     @extend_schema(methods=['GET'],
                    summary=_("Get user member under workspace"),
                    description=_("Get user member under workspace"),
@@ -202,7 +204,6 @@ class WorkspaceUserMemberView(APIView):
     @has_permissions(RoleConstants.WORKSPACE_MANAGE, RoleConstants.ADMIN, RoleConstants.EXTENDS_ADMIN,
                      RoleConstants.EXTENDS_WORKSPACE_MANAGE, RoleConstants.USER, RoleConstants.EXTENDS_USER)
     def get(self, request: Request, workspace_id):
-        resolve_current_user_auth_for_debug(request)
         return result.success(UserManageSerializer().get_user_members(workspace_id))
 
 
