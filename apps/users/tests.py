@@ -7,12 +7,15 @@ from django.test import RequestFactory
 from django.test import SimpleTestCase
 from django.test import override_settings
 from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 
+from common.auth.authenticate import TokenAuth
 from common.exception.app_exception import AppAuthenticationFailed
 from common.constants.permission_constants import Auth, RoleConstants
 from users.serializers.user import UserManageSerializer, UserProfileSerializer, build_current_user_role_list
 from users.serializers.login import LoginSerializer
 from users.views.user import (
+    WorkspaceUserMemberView,
     get_re_password_details,
     get_user_operation_object,
     resolve_current_user_for_role_list,
@@ -125,6 +128,23 @@ class CurrentUserRoleListAuthTest(SimpleTestCase):
         self.assertIs(resolved_user, admin_user)
         self.assertIsInstance(resolved_auth, Auth)
         self.assertIn(RoleConstants.ADMIN.value.__str__(), resolved_auth.role_list)
+
+
+class WorkspaceUserMemberAuthenticationTest(SimpleTestCase):
+    def test_authenticates_before_checking_workspace_member_permissions(self):
+        request = APIRequestFactory().get(
+            "/admin/api/workspace/default/user_member",
+            HTTP_AUTHORIZATION="Bearer valid-token",
+        )
+        user = SimpleNamespace(id="user-id")
+        auth = Auth([RoleConstants.ADMIN.value.__str__()], [])
+
+        with patch.object(TokenAuth, "authenticate", return_value=(user, auth)) as authenticate:
+            with patch("users.views.user.UserManageSerializer.get_user_members", return_value=[]):
+                response = WorkspaceUserMemberView.as_view()(request, workspace_id="default")
+
+        self.assertEqual(response.status_code, 200)
+        authenticate.assert_called_once()
 
 
 class UserOperationLogTest(SimpleTestCase):
