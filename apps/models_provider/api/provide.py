@@ -10,7 +10,7 @@ from django.utils.translation import gettext_lazy as _
 
 class ProvideResponse(ResultSerializer):
     def get_data(self):
-        return ProvideSerializer()
+        return ProvideSerializer(many=True)
 
 
 class ProvideSerializer(serializers.Serializer):

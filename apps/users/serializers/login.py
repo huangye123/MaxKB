@@ -105,9 +105,15 @@ class LoginSerializer(serializers.Serializer):
             try:
                 decrypted_raw = decrypt(encrypted_data)
                 # decrypt 可能返回非 JSON 字符串，防护解析异常
-                decrypted_data = json.loads(decrypted_raw) if decrypted_raw else {}
-                if isinstance(decrypted_data, dict):
-                    instance.update(decrypted_data)
+                if not decrypted_raw:
+                    raise ValueError("empty decrypted data")
+                try:
+                    decrypted_data = json.loads(decrypted_raw)
+                except json.JSONDecodeError:
+                    decrypted_data = {"password": decrypted_raw}
+                if not isinstance(decrypted_data, dict):
+                    raise ValueError("encrypted data must decrypt to an object")
+                instance.update(decrypted_data)
             except Exception as e:
                 maxkb_logger.exception("Failed to decrypt/parse encryptedData for user %s: %s", username, e)
                 raise AppApiException(500, _("Invalid encrypted data"))

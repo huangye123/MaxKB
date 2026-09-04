@@ -8,7 +8,7 @@
 """
 
 from common import result
-from common.auth import TokenAuth
+from common.auth import AnonymousAuthentication
 from common.constants.cache_version import Cache_Version
 from common.log.log import log
 from common.utils.common import encryption
@@ -69,7 +69,7 @@ class LoginView(APIView):
 
 
 class Logout(APIView):
-    authentication_classes = [TokenAuth]
+    authentication_classes = [AnonymousAuthentication]
 
     @extend_schema(
         methods=["POST"],
@@ -79,11 +79,36 @@ class Logout(APIView):
         tags=[_("User Management")],  # type: ignore
         responses=DefaultModelResponse.get_response(),
     )
-    @log(menu="User management", operate="Sign out", get_operation_object=lambda r, k: {"name": r.user.username})
+    @log(
+        menu="User management",
+        operate="Sign out",
+        get_operation_object=lambda r, k: {"name": getattr(r.user, "username", "")},
+    )
     def post(self, request: Request):
-        version, get_key = Cache_Version.TOKEN.value
-        cache.delete(get_key(token=request.META.get("HTTP_AUTHORIZATION")[7:]), version=version)
+        authorization = request.META.get("HTTP_AUTHORIZATION", "")
+        if authorization.startswith("Bearer "):
+            version, get_key = Cache_Version.TOKEN.value
+            cache.delete(get_key(token=authorization[7:]), version=version)
         return result.success(True)
+
+
+class LoginAuthSetting(APIView):
+    authentication_classes = [AnonymousAuthentication]
+
+    @extend_schema(methods=['GET'],
+                   summary=_("Get login authentication setting"),
+                   description=_("Get login authentication setting"),
+                   operation_id=_("Get login authentication setting"),  # type: ignore
+                   tags=[_("User Management")])  # type: ignore
+    def get(self, request: Request):
+        local_auth = {"label": "\u8d26\u53f7\u767b\u5f55", "value": "LOCAL"}
+        return result.success({
+            "default_value": "LOCAL",
+            "max_attempts": 1,
+            "login_methods": ["LOCAL"],
+            "system_options": [local_auth],
+            "auth_types": [local_auth],
+        })
 
 
 class CaptchaView(APIView):

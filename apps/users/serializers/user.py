@@ -51,6 +51,73 @@ PASSWORD_REGEX = re.compile(
 
 version, get_key = Cache_Version.SYSTEM.value
 
+BUILTIN_ROLE_NAMES = {
+    RoleConstants.ADMIN.value.name: "\u7cfb\u7edf\u7ba1\u7406\u5458",
+    RoleConstants.WORKSPACE_MANAGE.value.name: "\u5de5\u4f5c\u7a7a\u95f4\u7ba1\u7406\u5458",
+    RoleConstants.USER.value.name: "\u666e\u901a\u7528\u6237",
+}
+
+ROLE_LIST_ORDER = {
+    RoleConstants.ADMIN.value.name: 0,
+    RoleConstants.WORKSPACE_MANAGE.value.name: 1,
+    RoleConstants.USER.value.name: 2,
+}
+
+
+def _role_attr(role, *names):
+    for name in names:
+        value = getattr(role, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def build_current_user_role_list(roles):
+    role_map = {}
+    for role in roles:
+        if isinstance(role, str):
+            role_id = role
+            role_type = role
+            role_name = BUILTIN_ROLE_NAMES.get(role_id, role_id)
+            internal = True
+        else:
+            role_id = str(_role_attr(role, "id", "role_id", "type") or "")
+            role_type = str(_role_attr(role, "type") or role_id)
+            role_name = _role_attr(role, "name", "role_name") or BUILTIN_ROLE_NAMES.get(role_id, role_id)
+            internal = bool(_role_attr(role, "internal") if _role_attr(role, "internal") is not None else True)
+        if role_id:
+            role_map[role_id] = {
+                "id": role_id,
+                "name": role_name,
+                "type": role_type,
+                "internal": internal,
+            }
+    return sorted(role_map.values(), key=lambda item: (ROLE_LIST_ORDER.get(item["id"], 100), item["id"]))
+
+
+def get_current_user_role_list(user):
+    workspace_user_role_mapping_model = DatabaseModelManage.get_model("workspace_user_role_mapping")
+    role_model = DatabaseModelManage.get_model("role_model")
+    if workspace_user_role_mapping_model is not None and role_model is not None:
+        role_ids = (
+            QuerySet(workspace_user_role_mapping_model)
+            .filter(user_id=user.id)
+            .values_list("role_id", flat=True)
+            .distinct()
+        )
+        return build_current_user_role_list(QuerySet(role_model).filter(id__in=role_ids))
+    if user.role == RoleConstants.ADMIN.value.__str__():
+        return build_current_user_role_list(
+            [
+                RoleConstants.ADMIN.value.name,
+                RoleConstants.WORKSPACE_MANAGE.value.name,
+                RoleConstants.USER.value.name,
+            ]
+        )
+    if user.role == RoleConstants.WORKSPACE_MANAGE.value.__str__():
+        return build_current_user_role_list([RoleConstants.WORKSPACE_MANAGE.value.name, RoleConstants.USER.value.name])
+    return build_current_user_role_list([RoleConstants.USER.value.name])
+
 
 class UserProfileResponse(serializers.ModelSerializer):
     is_edit_password = serializers.BooleanField(required=True, label=_('Is Edit Password'))
@@ -609,13 +676,13 @@ class UserManageSerializer(serializers.Serializer):
 
             # 将字典值转换为列表形式
             return list(user_dict.values())
-        user_list = User.objects.exclude(role=RoleConstants.ADMIN.name)
+        user_list = QuerySet(User).all()
         return [
             {
                 'id': user.id,
                 'nick_name': user.nick_name,
                 'email': user.email,
-                'roles': [RoleConstants.USER.name]
+                'roles': [BUILTIN_ROLE_NAMES[RoleConstants.USER.value.name]]
             } for user in user_list
         ]
 

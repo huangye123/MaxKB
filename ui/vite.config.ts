@@ -9,7 +9,38 @@ import {createHtmlPlugin} from 'vite-plugin-html'
 import fs from 'fs'
 // import vueDevTools from 'vite-plugin-vue-devtools'
 const envDir = './env'
-// 自定义插件：重命名入口文件
+const backendTarget = 'http://127.0.0.1:8080'
+const devHistoryFallbackPlugin = (basePath: string, entry: string) => {
+  const normalizedBasePath = basePath.endsWith('/') ? basePath : `${basePath}/`
+  return {
+    name: 'dev-history-fallback',
+    configureServer(server: any) {
+      server.middlewares.use(async (req: any, res: any, next: any) => {
+        const url = req.url?.split('?')[0] || '/'
+        if (
+          req.method !== 'GET' ||
+          !url.startsWith(normalizedBasePath) ||
+          url.startsWith(`${normalizedBasePath}api`) ||
+          url.includes('/oss/')
+        ) {
+          next()
+          return
+        }
+
+        try {
+          const entryPath = path.resolve(__dirname, entry)
+          const html = fs.readFileSync(entryPath, 'utf-8')
+          const transformedHtml = await server.transformIndexHtml(url, html)
+          res.statusCode = 200
+          res.setHeader('Content-Type', 'text/html')
+          res.end(transformedHtml)
+        } catch (error) {
+          next(error)
+        }
+      })
+    },
+  }
+}
 const renameHtmlPlugin = (outDir: string, entry: string) => {
   return {
     name: 'rename-html',
@@ -18,13 +49,10 @@ const renameHtmlPlugin = (outDir: string, entry: string) => {
       const oldFile = path.join(buildDir, entry)
       const newFile = path.join(buildDir, 'index.html')
 
-      // 检查文件是否存在
       if (fs.existsSync(oldFile)) {
-        // 删除已存在的 index.html
         if (fs.existsSync(newFile)) {
           fs.unlinkSync(newFile)
         }
-        // 重命名文件
         fs.renameSync(oldFile, newFile)
       }
     },
@@ -36,35 +64,35 @@ export default defineConfig((conf: any) => {
   const ENV = loadEnv(mode, envDir)
   const proxyConf: Record<string, string | ProxyOptions> = {}
   proxyConf['/admin/api'] = {
-    target: 'http://127.0.0.1:8080',
+    target: backendTarget,
     changeOrigin: true,
   }
   proxyConf['/chat/api'] = {
-    target: 'http://127.0.0.1:8080',
+    target: backendTarget,
     changeOrigin: true,
   }
   proxyConf['/doc'] = {
-    target: 'http://127.0.0.1:8080',
+    target: backendTarget,
     changeOrigin: true,
     rewrite: (path: string) => path.replace(ENV.VITE_BASE_PATH, '/'),
   }
   proxyConf['/schema'] = {
-    target: 'http://127.0.0.1:8080',
+    target: backendTarget,
     changeOrigin: true,
     rewrite: (path: string) => path.replace(ENV.VITE_BASE_PATH, '/'),
   }
   proxyConf['/static'] = {
-    target: 'http://127.0.0.1:8080',
+    target: backendTarget,
     changeOrigin: true,
     rewrite: (path: string) => path.replace(ENV.VITE_BASE_PATH, '/'),
   }
 
-  // 前端静态资源转发到本身
+  // Proxy static OSS resources to the backend.
   proxyConf[`^${ENV.VITE_BASE_PATH}.+\/oss\/file\/.*$`] = {
     target: `http://127.0.0.1:8080`,
     changeOrigin: true,
   }
-  // 前端静态资源转发到本身
+  // Proxy static OSS resources to the backend.
   proxyConf[`^${ENV.VITE_BASE_PATH}oss\/file\/.*$`] = {
     target: `http://127.0.0.1:8080`,
     changeOrigin: true,
@@ -73,13 +101,7 @@ export default defineConfig((conf: any) => {
     target: `http://127.0.0.1:8080`,
     changeOrigin: true,
   }
-  // 前端静态资源转发到本身
-  proxyConf[ENV.VITE_BASE_PATH] = {
-    target: `http://127.0.0.1:${ENV.VITE_APP_PORT}`,
-    changeOrigin: true,
-    rewrite: (path: string) => path.replace(ENV.VITE_BASE_PATH, '/'),
-  }
-
+  // Proxy static OSS resources to the backend.
   return {
     preflight: false,
     lintOnSave: false,
@@ -90,6 +112,7 @@ export default defineConfig((conf: any) => {
       vueJsx(),
       DefineOptions(),
       createHtmlPlugin({template: ENV.VITE_ENTRY}),
+      devHistoryFallbackPlugin(ENV.VITE_BASE_PATH, ENV.VITE_ENTRY),
       renameHtmlPlugin(`dist${ENV.VITE_BASE_PATH}`, ENV.VITE_ENTRY),
     ],
     server: {
